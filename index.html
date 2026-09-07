@@ -1,122 +1,440 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>GPS Speedometer</title><style>
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>SPEEDOMeter</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
+    min-height: 100vh;
     background: #111;
     color: white;
     font-family: Arial, sans-serif;
     text-align: center;
 }
 
+/* TITLE */
+.title {
+    margin-top: 35px;
+    font-size: 38px;
+    font-weight: bold;
+    font-style: italic;
+}
+
+.speedo {
+    color: orange;
+}
+
+.meter {
+    color: white;
+}
+
+/* SPEEDOMETER */
 .speedometer {
-    margin: 60px auto;
-    width: 280px;
-    height: 280px;
-    border: 10px solid #444;
+    margin: 35px auto 25px;
+    width: 290px;
+    height: 290px;
+
+    border: 12px solid #444;
     border-radius: 50%;
+
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+
+    transition: box-shadow 0.3s;
 }
 
+#warning {
+    height: 30px;
+    font-size: 21px;
+    font-weight: bold;
+    color: red;
+}
+
+/* SPEED */
 #speed {
     font-size: 75px;
     font-weight: bold;
+    transition: color 0.3s;
 }
 
 .unit {
-    color: #aaa;
     font-size: 22px;
+    color: #aaa;
 }
 
+/* BUTTON */
 button {
-    padding: 15px 25px;
+    padding: 14px 25px;
     font-size: 18px;
+    font-weight: bold;
     border: none;
     border-radius: 10px;
-    cursor: pointer;
+    background: #333;
+    color: white;
+}
+
+button:active {
+    transform: scale(0.96);
 }
 
 #status {
-    margin-top: 20px;
+    margin-top: 18px;
     color: #00ff88;
 }
-</style></head><body><h1>🛰️ GPS Speedometer</h1><div class="speedometer">
+</style>
+</head>
+
+<body>
+
+<div class="title">
+    <span class="speedo">SPEEDO</span>
+    <span class="meter">METER</span>
+</div>
+
+<div class="speedometer" id="speedometer">
+
+    <div id="warning"></div>
+
     <div id="speed">0</div>
-    <div class="unit">KM/H</div>
-</div><button onclick="startGPS()">📍 Enable Location</button>
 
-<p id="status">Location access required</p><script>
+    <div class="unit">
+        KM/H
+    </div>
 
-const speedDisplay = document.getElementById("speed");
-const status = document.getElementById("status");
+</div>
+
+<button onclick="startGPS()">
+    📍 Enable Location
+</button>
+
+<p id="status">
+    Location access required
+</p>
+
+
+<script>
+
+const speedDisplay =
+    document.getElementById("speed");
+
+const warning =
+    document.getElementById("warning");
+
+const status =
+    document.getElementById("status");
+
+const speedometer =
+    document.getElementById("speedometer");
+
+
+let watchID = null;
+let lastPosition = null;
+let lastTime = null;
+
+/* -------------------------
+   START GPS
+------------------------- */
 
 function startGPS() {
 
-    // Your custom alert
-    alert(
-        "📍 Location Access Required!\n\n" +
-        "This speedometer uses your GPS location to calculate your actual speed.\n\n" +
-        "Please press ALLOW in the next permission popup."
-    );
-
-    // Check if Geolocation is supported
     if (!navigator.geolocation) {
-        alert("Your browser does not support GPS!");
+
+        alert(
+            "Your browser does not support GPS!"
+        );
+
         return;
     }
 
-    status.textContent = "Requesting location access...";
-
-    navigator.geolocation.watchPosition(
-        updateSpeed,
-        showError,
-        {
-            enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 10000
-        }
+    alert(
+        "📍 Location Access Required!\n\n" +
+        "SPEEDO METER needs your location " +
+        "to measure your actual speed.\n\n" +
+        "Please press ALLOW."
     );
+
+    status.textContent =
+        "🛰️ Getting accurate GPS...";
+
+    watchID =
+        navigator.geolocation.watchPosition(
+
+            updateSpeed,
+
+            showError,
+
+            {
+                enableHighAccuracy: true,
+
+                // Don't use old GPS positions
+                maximumAge: 0,
+
+                // Give GPS more time
+                timeout: 20000
+            }
+        );
 }
+
+
+/* -------------------------
+   GPS SPEED CALCULATION
+------------------------- */
 
 function updateSpeed(position) {
 
-    let speed = position.coords.speed;
+    const now = Date.now();
 
-    if (speed !== null) {
+    let speedMS =
+        position.coords.speed;
 
-        let kmh = speed * 3.6;
+    /*
+       If the device provides GPS speed,
+       use it directly.
+    */
 
-        speedDisplay.textContent = kmh.toFixed(1);
-        status.textContent = "🛰️ GPS Connected";
+    if (
+        speedMS !== null &&
+        speedMS >= 0
+    ) {
 
-    } else {
+        updateDisplay(
+            speedMS * 3.6
+        );
 
-        speedDisplay.textContent = "0";
-        status.textContent = "📡 Calculating speed...";
+    }
+
+    /*
+       Some phones/browsers don't provide
+       coords.speed.
+
+       Calculate it ourselves using
+       distance between GPS points.
+    */
+
+    else if (
+        lastPosition !== null &&
+        lastTime !== null
+    ) {
+
+        const distance =
+            calculateDistance(
+                lastPosition.coords.latitude,
+                lastPosition.coords.longitude,
+
+                position.coords.latitude,
+                position.coords.longitude
+            );
+
+        const time =
+            (now - lastTime) / 1000;
+
+        if (time > 0) {
+
+            // metres/sec
+            const calculatedSpeed =
+                distance / time;
+
+            // m/s → km/h
+            updateDisplay(
+                calculatedSpeed * 3.6
+            );
+        }
+    }
+
+    lastPosition = position;
+    lastTime = now;
+
+    status.textContent =
+        "🛰️ GPS Connected";
+}
+
+
+/* -------------------------
+   DISTANCE BETWEEN GPS POINTS
+------------------------- */
+
+function calculateDistance(
+    lat1,
+    lon1,
+    lat2,
+    lon2
+) {
+
+    const R = 6371000;
+
+    const dLat =
+        (lat2 - lat1) *
+        Math.PI / 180;
+
+    const dLon =
+        (lon2 - lon1) *
+        Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2) *
+        Math.sin(dLat / 2) +
+
+        Math.cos(
+            lat1 * Math.PI / 180
+        ) *
+
+        Math.cos(
+            lat2 * Math.PI / 180
+        ) *
+
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+    const c =
+        2 * Math.atan2(
+            Math.sqrt(a),
+            Math.sqrt(1 - a)
+        );
+
+    return R * c;
+}
+
+
+/* -------------------------
+   SPEED DISPLAY
+------------------------- */
+
+function updateDisplay(speed) {
+
+    /*
+       Ignore tiny GPS noise.
+       This prevents 0.1, 0.2 etc.
+       when you're standing still.
+    */
+
+    if (speed < 1) {
+        speed = 0;
+    }
+
+    /*
+       Limit crazy GPS spikes.
+    */
+
+    if (speed > 120) {
+        speed = 120;
+    }
+
+    speedDisplay.textContent =
+        speed.toFixed(1);
+
+    /*
+       1–20 GREEN
+       21–40 YELLOW
+       41–60 ORANGE
+       61–80 RED
+       81–120 RED + SLOW DOWN!
+    */
+
+    if (speed === 0) {
+
+        speedDisplay.style.color =
+            "white";
+
+        warning.textContent = "";
+
+    }
+
+    else if (speed <= 20) {
+
+        speedDisplay.style.color =
+            "#00ff00";
+
+        warning.textContent = "";
+
+    }
+
+    else if (speed <= 40) {
+
+        speedDisplay.style.color =
+            "yellow";
+
+        warning.textContent = "";
+
+    }
+
+    else if (speed <= 60) {
+
+        speedDisplay.style.color =
+            "orange";
+
+        warning.textContent = "";
+
+    }
+
+    else if (speed <= 80) {
+
+        speedDisplay.style.color =
+            "red";
+
+        warning.textContent = "";
+
+    }
+
+    else {
+
+        speedDisplay.style.color =
+            "red";
+
+        warning.textContent =
+            "⚠ SLOW DOWN!";
 
     }
 }
+
+
+/* -------------------------
+   ERROR HANDLING
+------------------------- */
 
 function showError(error) {
 
     status.style.color = "red";
 
     if (error.code === 1) {
-        status.textContent = "❌ Location permission denied!";
+
+        status.textContent =
+            "❌ Location permission denied!";
+
     }
 
     else if (error.code === 2) {
-        status.textContent = "❌ GPS location unavailable!";
+
+        status.textContent =
+            "❌ GPS unavailable!";
+
     }
 
     else if (error.code === 3) {
-        status.textContent = "❌ GPS request timed out!";
+
+        status.textContent =
+            "❌ GPS timed out!";
+
+    }
+
+    else {
+
+        status.textContent =
+            "❌ GPS error!";
     }
 }
 
-</script></body>
+</script>
+
+</body>
 </html>
